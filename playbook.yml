@@ -1,0 +1,140 @@
+- hosts: localhost
+  connection: local
+  vars:
+    
+
+  tasks:
+      
+    -   name: Check the version of Releases
+        command: hostnamectl
+        register: os_check
+        ignore_errors: yes
+
+    -   name: Add an Apt signing key
+        apt_key:
+            url: https://couchdb.apache.org/repo/bintray-pubkey.asc
+            state: present
+        when:
+            - os_check.stdout | regex_search("Ubuntu") 
+
+    -   name: Enable EPEL Repo - CentOS 7
+        yum:
+            name: epel-release
+            state: present
+        when:
+            - os_check.stdout | regex_search("CentOS Linux 7") 
+
+    -   name: Add repo entry - CentOS
+        yum_repository:
+            name: bintray--apache-couchdb-rpm
+            description: bintray--apache-couchdb-rpm
+            baseurl: http://apache.bintray.com/couchdb-rpm/el$releasever/$basearch/
+            gpgcheck: no
+            repo_gpgcheck: no
+            enabled: yes
+            file: bintray-apache-couchdb-rpm
+        when: 
+            - os_check.stdout | regex_search("CentOS")
+
+    -   name: Add repo - Ubuntu 20
+        apt_repository:
+            repo: deb https://apache.bintray.com/couchdb-deb focal main
+            state: present
+        when:
+            - os_check.stdout | regex_search("Ubuntu 20")
+
+    -   name: Add repo - Ubuntu 18
+        apt_repository:
+            repo: deb https://apache.bintray.com/couchdb-deb bionic main
+            state: present
+        when:
+            - os_check.stdout | regex_search("Ubuntu 18")
+
+    -   name: Update apt cache.
+        apt: update_cache=yes cache_valid_time=600
+        when: ansible_os_family == 'Debian'
+
+    -   name: Add Deb Conf - Standalone
+        debconf:
+            name: couchdb
+            question: couchdb/mode
+            value: standalone
+            vtype: select
+        when:
+            - os_check.stdout | regex_search("Ubuntu") 
+
+    -   name: Add Deb Conf - bindaddress
+        debconf:
+            name: couchdb
+            question: couchdb/bindaddress
+            value: 0.0.0.0
+            vtype: string
+        when:
+            - os_check.stdout | regex_search("Ubuntu") 
+
+    -   name: Add Deb Conf - secure
+        debconf:
+            name: couchdb
+            question: couchdb/adminpass
+            value: pwslab_admin
+            vtype: password
+        no_log: True
+        when:
+            - os_check.stdout | regex_search("Ubuntu") 
+
+    -   name: Add Deb Conf - match_secure
+        debconf:
+            name: couchdb
+            question: couchdb/adminpass_again
+            value: pwslab_admin
+            vtype: password
+        no_log: True
+        when:
+            - os_check.stdout | regex_search("Ubuntu") 
+
+    -   name: Install CouchDB - Ubuntu
+        apt: 
+            name: couchdb
+            state: present
+        when:
+            - os_check.stdout | regex_search("Ubuntu") 
+
+    -   name: Install CouchDB - CentOS
+        yum: 
+            name: couchdb
+            state: present
+        when:
+            - os_check.stdout | regex_search("CentOS") 
+
+    -   name: Applying replacement I on CentOS
+        lineinfile:
+            dest: /opt/couchdb/etc/local.ini
+            regexp: '^;admin ='
+            line: 'admin = pwslab_admin'
+            state: present
+        when:
+            - os_check.stdout | regex_search("CentOS")
+
+    -   name: Applying replacement II on CentOS
+        lineinfile:
+            dest: /opt/couchdb/etc/local.ini
+            regexp: '^;port ='
+            line: 'port = 5984'
+            state: present
+        when:
+            - os_check.stdout | regex_search("CentOS")
+
+    -   name: Applying replacement III on CentOS
+        lineinfile:
+            dest: /opt/couchdb/etc/local.ini
+            regexp: '^;bind_address ='
+            line: 'bind_address = 0.0.0.0'
+            state: present
+        when:
+            - os_check.stdout | regex_search("CentOS")
+
+    -   name: Start the CouchDB Service
+        systemd:
+            name: couchdb
+            enabled: yes
+            state: started
